@@ -317,7 +317,7 @@ class Numworks {
                 // Global part
                 data["version"] = this.__readFString(dv, 0x04, 8);
                 data["storage"] = {};
-                // If the version is bigger of equal to 16.0.0, we use the new format
+                // In bootloader mode, we use the new format
                 if (bootloaderMode) {
                     // If it's a kernel header, we parse it as a kernel
                     if (isKernelHeader) {
