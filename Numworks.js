@@ -73,8 +73,6 @@ class Numworks {
                 return "0110";
             } else if (external_size === 0x1000000) {
                 return (exclude_modded ? "0110" : "0110-16M");
-            } else {
-                return "????";
             }
         } else if (internal_size === 0x100000) {
             if (external_size === 0) {
@@ -83,12 +81,13 @@ class Numworks {
                 return (exclude_modded ? "0100" : "0100-8M");
             } else if (external_size === 0x1000000) {
                 return (exclude_modded ? "0100" : "0100-16M");
-            } else {
-                return "????";
             }
-        } else {
-            return "????";
         }
+        if (internal_size === 0x0 && external_size === 0x7f0000) {
+            return "0115";
+        }
+
+        return "????";
     }
 
     /**
