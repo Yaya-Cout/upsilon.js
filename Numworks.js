@@ -67,7 +67,10 @@ class Numworks {
         }
 
         if (internal_size === 0x10000 || internal_size === 0x0) {
-            if (external_size === 0) {
+            // Modded N0110 are not on Epsilon 19, which hides the external
+            // flash (this avoid confusion with N0100 and Epsilon 19, which
+            // hides the internal flash and has 0 external flash)
+            if (external_size === 0 && internal_size === 0x10000) {
                 return (exclude_modded ? "????" : "0110-0M");
             } else if (external_size === 0x800000) {
                 return "0110";
@@ -85,6 +88,12 @@ class Numworks {
         }
         if (internal_size === 0x0 && external_size === 0x7f0000) {
             return "0115";
+        }
+
+        // If there is no internal flash and no external flash, it's probably a
+        // N0100 with Epsilon 19, which hides the internal flash
+        if (internal_size === 0x0 && external_size === 0x0) {
+            return "0100";
         }
 
         return "????";
