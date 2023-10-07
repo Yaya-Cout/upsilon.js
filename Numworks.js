@@ -200,9 +200,9 @@ class Numworks {
                 if (device.memoryInfo) {
                     // We have to add RAM manually, because the device doesn't expose that normally
                     device.memoryInfo.segments.unshift({
-                        start: 0x20000000,
+                        start: 0x24000000,
                         sectorSize: 1024,
-                        end: 0x20040000,
+                        end: 0x24040000,
                         readable: true,
                         erasable: false,
                         writable: true
@@ -395,7 +395,7 @@ class Numworks {
         let data = {};
         // We have to parse the slot info to get the active slot
         // TODO: Legacy mode
-        this.device.startAddress = 0x20000000;
+        this.device.startAddress = 0x24000000;
         let blob = await this.device.do_upload(this.transferSize, 0x64);
         let slotInfo = this.__parseSlotInfo(await blob.arrayBuffer());
         if (slotInfo["slot"]["magik"]) {
