@@ -1,6 +1,6 @@
 {
     "name": "upsilon.js",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "description": "Utility classes to interact with a Numworks calculator using WebUSB.",
     "main": "index.js",
     "scripts": {
