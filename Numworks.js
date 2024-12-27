@@ -66,6 +66,10 @@ class Numworks {
             return external_size ? "0110" : "0100";
         }
 
+        if ("" + this.device.device_.deviceVersionMajor + this.device.device_.deviceVersionMinor + this.device.device_.deviceVersionSubminor === "120") {
+            return "0120";
+        }
+
         if (internal_size === 0x10000 || internal_size === 0x0) {
             if (external_size === 0) {
                 return (exclude_modded ? "????" : "0110-0M");
@@ -206,6 +210,17 @@ class Numworks {
                         start: 0x20000000,
                         sectorSize: 1024,
                         end: 0x20040000,
+                        readable: true,
+                        erasable: false,
+                        writable: true
+                    });
+
+                    // Also add the N0120 RAM, even if not used as we don't want to bother checking the model yet
+                    // TODO: Improve this
+                    device.memoryInfo.segments.unshift({
+                        start: 0x24000000,
+                        sectorSize: 1024,
+                        end: 0x24040000,
                         readable: true,
                         erasable: false,
                         writable: true
@@ -526,9 +541,12 @@ class Numworks {
      * @return  an object representing the platforminfo.
      */
     async getPlatformInfo() {
+        // Get the Model. On N0120; address is different
+        let model = this.getModel();
+
         let data = {};
         // Get the slot infos to know the configuration
-        this.device.startAddress = 0x20000000;
+        this.device.startAddress = model == "0120" ? 0x24000000 : 0x20000000;
         let blob = await this.device.do_upload(this.transferSize, 0x64);
         let slotInfo = this.__parseSlotInfo(await blob.arrayBuffer());
 
@@ -699,6 +717,21 @@ class Numworks {
         await storage.parseStorage(storage_blob);
 
         return storage;
+    }
+
+    /**
+     * Crash the calculator by reading at a forbidden address
+     *
+     * @returns Boolean, True if the calculator crashed successfully
+     */
+    async crash() {
+        this.device.startAddress = 0xDEADBEEF;
+        try {
+            const blob = await this.device.do_upload(this.transferSize, 0x128);
+            return false;
+        } catch {
+            return true;
+        }
     }
 
     onUnexpectedDisconnect(event, callback) {
