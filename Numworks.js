@@ -66,8 +66,15 @@ class Numworks {
             return external_size ? "0110" : "0100";
         }
 
-        if ("" + this.device.device_.deviceVersionMajor + this.device.device_.deviceVersionMinor + this.device.device_.deviceVersionSubminor === "120") {
-            return "0120";
+        let usbDeviceVersion = "" + this.device.device_.deviceVersionMajor + this.device.device_.deviceVersionMinor + this.device.device_.deviceVersionSubminor
+        switch (usbDeviceVersion) {
+            case "120":
+                return "0120";
+            case "115":
+                return "0115";
+            case "110":
+                return "0110"
+            // We can't match on N0100 as some N0110 firmware are returning 100
         }
 
         if (internal_size === 0x10000 || internal_size === 0x0) {
