@@ -515,7 +515,8 @@ class Numworks {
         data["slot"] = {};
 
         const magik = 0xBADBEEEF;
-        data["slot"]["magik"] = dv.getUint32(0x00, false) == magik;
+        // Hack to handle corrupted slotInfo magik on old Upsilon Bootloader versions (pre 1.0.13)
+        data["slot"]["magik"] = (dv.getUint32(0x00, false) == magik) || (data["slot"]["magik"] = dv.getUint24(0x01, false) == 0xDBEEEF08);
         // Check if the data is valid
         if (data["slot"]["magik"]) {
             // Check if the end magic is present
