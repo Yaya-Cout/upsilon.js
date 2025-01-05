@@ -66,11 +66,25 @@ class Numworks {
             return external_size ? "0110" : "0100";
         }
 
+        let usbDeviceVersion = "" + this.device.device_.deviceVersionMajor + this.device.device_.deviceVersionMinor + this.device.device_.deviceVersionSubminor
+        switch (usbDeviceVersion) {
+            case "120":
+                return "0120";
+            case "115":
+                return "0115";
+            case "110":
+                return "0110"
+            // We can't match on N0100 as some N0110 firmware are returning 100
+        }
+
         if (internal_size === 0x10000 || internal_size === 0x0) {
             if (external_size === 0) {
                 return (exclude_modded ? "????" : "0110-0M");
             } else if (external_size === 0x800000) {
                 return "0110";
+            } else if (external_size === (0x800000 - 0x30000)) {
+                // Epsilon 22 hide a part of the flash beginning, IDK why
+                return "0110"
             } else if (external_size === 0x1000000) {
                 return (exclude_modded ? "0110" : "0110-16M");
             } else {
@@ -207,6 +221,17 @@ class Numworks {
                         erasable: false,
                         writable: true
                     });
+
+                    // Also add the N0120 RAM, even if not used as we don't want to bother checking the model yet
+                    // TODO: Improve this
+                    device.memoryInfo.segments.unshift({
+                        start: 0x24000000,
+                        sectorSize: 1024,
+                        end: 0x24040000,
+                        readable: true,
+                        erasable: false,
+                        writable: true
+                    });
                 }
             }
         }
@@ -236,7 +261,187 @@ class Numworks {
         return out;
     }
 
-    __parsePlatformInfo(array, isKernelHeader, bootloaderMode) {
+    __parseKernelHeader(array) {
+        var dv = new DataView(array);
+        var data = {};
+
+        const magiks = [0xF00DC0DE, 0xFEEDC0DE];
+
+        // Used as pointer when reading
+        let currentAddress = 0x0;
+
+        data["magik"] = dv.getUint32(currentAddress, false);
+        currentAddress += 0x4
+
+        // Iterate over the magiks to find the correct one
+        let magikFound = false;
+        for(var i = 0; i < magiks.length; i++) {
+            if (data["magik"] === magiks[i]) {
+                magikFound = true;
+                break;
+            }
+        }
+        if (!magikFound) {
+            data["magik"] = false;
+            console.warn("No kernel magic")
+            return data
+        }
+
+        data["version"] = this.__readFString(dv, currentAddress, 8);
+        currentAddress += 0x8
+
+        data["commit"] = this.__readFString(dv, currentAddress, 8);
+        currentAddress += 0x8
+
+        // End of the kernel header, next is the magic
+        if (dv.getUint32(currentAddress, false) !== data["magik"]) {
+            console.warn("PlatformInfo is not valid, end magic is not present at the end of the Kernel header");
+        }
+
+        return data
+    }
+
+
+    __parseCustomInfos(dv, startAddress) {
+        let data = {};
+
+        let currentAddress = startAddress
+
+        // Omega infos
+        data["omega"] = {};
+
+        data["omega"]["installed"] = dv.getUint32(currentAddress, false) === 0xDEADBEEF
+        currentAddress += 4
+
+        if (data["omega"]["installed"]) {
+            data["omega"]["version"] = this.__readFString(dv, currentAddress, 16);
+            currentAddress += 16;
+
+            data["omega"]["user"] = this.__readFString(dv, currentAddress, 16);
+            currentAddress += 16;
+
+            if(dv.getUint32(currentAddress, false) !== 0xDEADBEEF) {
+                console.warn("Omega Magic not present at end")
+            }
+            currentAddress += 4
+        }
+
+        // Upsilon infos
+        data["upsilon"] = {};
+        data["upsilon"]["installed"] = dv.getUint32(currentAddress, false) === 0x69737055
+
+        currentAddress += 4
+
+        if (data["upsilon"]["installed"]) {
+            data["upsilon"]["version"] = this.__readFString(dv, currentAddress, 16);
+            currentAddress += 16;
+
+            data["upsilon"]["osType"] = dv.getUint32(currentAddress, false);
+            currentAddress += 4
+
+            if (data["upsilon"]["osType"] == 0x78718279) {
+                data["upsilon"]["official"] = true;
+            } else {
+                data["upsilon"]["official"] = false;
+            }
+
+            if (dv.getUint32(currentAddress, false) !== 0x69737055) {
+                console.warn("Upsilon Magic not present at end")
+            }
+            currentAddress += 4
+        }
+
+        return data
+    }
+
+    __parseUserlandHeader(array) {
+        var dv = new DataView(array);
+        var data = {};
+
+        const magiks = [0xF00DC0DE, 0xFEEDC0DE];
+
+        // Used as pointer when reading
+        let currentAddress = 0;
+
+        data["magik"] = dv.getUint32(currentAddress, false);
+        currentAddress += 4
+
+        // Iterate over the magiks to find the correct one
+        let magikFound = false;
+        for(var i = 0; i < magiks.length; i++) {
+            if (data["magik"] === magiks[i]) {
+                magikFound = true;
+                break;
+            }
+        }
+        if (!magikFound) {
+            data["magik"] = false;
+            console.warn("No usermand magic")
+            return data
+        }
+
+        data["version"] = this.__readFString(dv, currentAddress, 8);
+        currentAddress += 8
+
+        // Storage
+        data["storage"] = {};
+        data["storage"]["address"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+        data["storage"]["size"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+
+        // External
+        data["external"] = {};
+        data["external"]["flashStart"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+        data["external"]["flashEnd"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+        data["external"]["flashSize"] = data["external"]["flashEnd"] - data["external"]["flashStart"];
+
+        data["external"]["ramStart"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+        data["external"]["ramEnd"] = dv.getUint32(currentAddress, true);
+        currentAddress += 4
+        data["external"]["ramSize"] = data["external"]["ramEnd"] - data["external"]["ramStart"];
+
+        if (dv.getUint32(currentAddress, false) !== data["magik"]) {
+            if (data["version"] < "22.0.0") {
+                console.warn("PlatformInfo is not valid, end magic is not present at the end of the Userland info for Epsilon 21, using Epsilon 22 struct");
+            }
+
+            // Epsilon 22 (username)
+            data["epsilon"] = {}
+            data["epsilon"]["usernameStart"] = dv.getUint32(currentAddress, true);
+            currentAddress += 4
+            data["epsilon"]["usernameEnd"] = dv.getUint32(currentAddress, true);
+            currentAddress += 4
+            data["epsilon"]["usernameSize"] = data["epsilon"]["usernameEnd"] - data["epsilon"]["usernameStart"]
+
+            /*
+            // Read the username
+            this.device.startAddress = data["epsilon"]["usernameStart"];
+            let usernameBlob = await this.device.do_upload(this.transferSize, data["epsilon"]["usernameSize"] );
+            var usernameDv = new DataView(await usernameBlob.arrayBuffer());
+
+            data["username"] = this.__readFString(dv, 0, data["epsilon"]["usernameSize"]);
+            if (dv.getUint32(0x2C, false) !== data["magik"]) {
+                console.warn("PlatformInfo is not valid, end magic is not present at the end of the Userland info");
+            }
+            */
+        }
+
+        if (dv.getUint32(currentAddress, false) !== data["magik"]) {
+            console.warn("PlatformInfo is not valid, end magic is not present at the end of the Kernel header");
+        }
+        currentAddress += 4
+
+        data = { ...data, ...this.__parseCustomInfos(dv, currentAddress)}
+
+        return data
+    }
+
+    async __parsePlatformInfo(array) {
+        // Parse legacy platform infos
         var dv = new DataView(array);
         var data = {};
 
@@ -258,11 +463,9 @@ class Numworks {
 
 
         if (data["magik"]) {
-            // The old platform doesn't exist anymore, and the bootloader has never supported it
-            data["oldplatform"] = false;
-            if (!bootloaderMode) {
-                data["oldplatform"] = !(dv.getUint32(0x1C, false) === data["magik"]);
-            }
+            data["oldplatform"] = !(dv.getUint32(0x1C, false) === data["magik"]);
+
+            data["username"] = ""
 
             data["omega"] = {};
 
@@ -290,66 +493,19 @@ class Numworks {
                 data["storage"]["address"] = dv.getUint32(0x14 + offset, true);
                 data["storage"]["size"] = dv.getUint32(0x18 + offset, true);
             } else {
-                // Omega part
-                let omegaStart = 0x28;
-                data["omega"]["installed"] = dv.getUint32(omegaStart, false) === 0xDEADBEEF && dv.getUint32(omegaStart + 0x24, false) === 0xDEADBEEF;
-                if (!data["omega"]["installed"]) {
-                    omegaStart = 0x20;
-                    data["omega"]["installed"] = dv.getUint32(omegaStart, false) === 0xDEADBEEF && dv.getUint32(omegaStart + 0x24, false) === 0xDEADBEEF;
-                }
-                if (data["omega"]["installed"]) {
-                    data["omega"]["version"] = this.__readFString(dv, omegaStart + 0x4, 16);
-                    data["omega"]["user"] = this.__readFString(dv, omegaStart + 0x14, 16);
-                }
-                // Upsilon part
-                let upsilonStart = omegaStart + 0x28;
-                data["upsilon"] = {};
-                data["upsilon"]["installed"] = dv.getUint32(upsilonStart, false) === 0x69737055 && dv.getUint32(upsilonStart + 0x18, false) === 0x69737055;
-                if (data["upsilon"]["installed"]) {
-                    data["upsilon"]["version"] = this.__readFString(dv, upsilonStart + 0x4, 16);
-                    data["upsilon"]["osType"] = dv.getUint32(upsilonStart + 0x14, false);
-                    if (data["upsilon"]["osType"] == 0x78718279) {
-                        data["upsilon"]["official"] = true;
-                    } else {
-                        data["upsilon"]["official"] = false;
-                    }
-                }
-                // Global part
                 data["version"] = this.__readFString(dv, 0x04, 8);
                 data["storage"] = {};
-                // If the version is bigger of equal to 16.0.0, we use the new format
-                if (bootloaderMode) {
-                    // If it's a kernel header, we parse it as a kernel
-                    if (isKernelHeader) {
-                        data["commit"] = this.__readFString(dv, 0x0C, 8);
-                        // End of the kernel header, next is the magic
-                        if (dv.getUint32(0x14, false) !== data["magik"]) {
-                            console.warn("PlatformInfo is not valid, end magic is not present at the end of the Kernel header");
-                        }
-                    } else {
-                        data["storage"]["address"] = dv.getUint32(0x0C, true);
-                        data["storage"]["size"] = dv.getUint32(0x10, true);
-                        data["external"] = {};
-                        data["external"]["flashStart"] = dv.getUint32(0x14, true);
-                        data["external"]["flashEnd"] = dv.getUint32(0x18, true);
-                        data["external"]["flashSize"] = data["external"]["flashEnd"] - data["external"]["flashStart"];
-                        data["external"]["ramStart"] = dv.getUint32(0x1C, true);
-                        data["external"]["ramEnd"] = dv.getUint32(0x20, true);
-                        data["external"]["ramSize"] = data["external"]["ramEnd"] - data["external"]["ramStart"];
-                        // End of the platform info, next is the magic
-                        if (dv.getUint32(0x24, false) !== data["magik"]) {
-                            console.warn("PlatformInfo is not valid, end magic is not present at the end of the Userland info");
-                        }
-                    }
-                } else {
-                    data["commit"] = this.__readFString(dv, 0x0C, 8);
-                    data["storage"]["address"] = dv.getUint32(0x14, true);
-                    data["storage"]["size"] = dv.getUint32(0x18, true);
-                }
+                data["commit"] = this.__readFString(dv, 0x0C, 8);
+                data["storage"]["address"] = dv.getUint32(0x14, true);
+                data["storage"]["size"] = dv.getUint32(0x18, true);
+
+                data = {...data, ...this.__parseCustomInfos(dv, 0x20)}
             }
         } else {
             data["omega"] = false;
         }
+
+
         return data;
     }
 
@@ -359,7 +515,8 @@ class Numworks {
         data["slot"] = {};
 
         const magik = 0xBADBEEEF;
-        data["slot"]["magik"] = dv.getUint32(0x00, false) == magik;
+        // Hack to handle corrupted slotInfo magik on old Upsilon Bootloader versions (pre 1.0.13)
+        data["slot"]["magik"] = (dv.getUint32(0x00, false) == magik) || (data["slot"]["magik"] = dv.getUint24(0x01, false) == 0xDBEEEF08);
         // Check if the data is valid
         if (data["slot"]["magik"]) {
             // Check if the end magic is present
@@ -392,35 +549,37 @@ class Numworks {
      * @return  an object representing the platforminfo.
      */
     async getPlatformInfo() {
+        // Get the Model. On N0120; address is different
+        let model = this.getModel();
+
         let data = {};
-        // We have to parse the slot info to get the active slot
-        // TODO: Legacy mode
-        this.device.startAddress = 0x20000000;
+        // Get the slot infos to know the configuration
+        this.device.startAddress = model == "0120" ? 0x24000000 : 0x20000000;
         let blob = await this.device.do_upload(this.transferSize, 0x64);
         let slotInfo = this.__parseSlotInfo(await blob.arrayBuffer());
+
         if (slotInfo["slot"]["magik"]) {
+            // Read the userland header
             this.device.startAddress = slotInfo["slot"]["userlandHeader"];
-            // this.device.startAddress = 0x90010000;
             blob = await this.device.do_upload(this.transferSize, 0x128);
-            data = this.__parsePlatformInfo(await blob.arrayBuffer(), false, true);
+            data = await this.__parseUserlandHeader(await blob.arrayBuffer());
             data["mode"] = "bootloader";
-            // On Epsilon 16 and after, a part of the platforminfo is in the kernel header
+            data["oldplatform"] = false
+
+            // Read the kernel header
             this.device.startAddress = slotInfo["slot"]["kernelHeader"];
             blob = await this.device.do_upload(this.transferSize, 0x64);
-            let data_kernel = this.__parsePlatformInfo(await blob.arrayBuffer(), true, true);
+            let data_kernel = await this.__parseKernelHeader(await blob.arrayBuffer());
+
             // Merge the two objects
-            // We just have to copy the commit to the data object, because it's the only field that is not in the userland header
-            data["commit"] = data_kernel["commit"];
-        }
-        else {
-            // Check if the magic is present, if not, we will parse it as legacy platforminfo
-            if (!data["magik"]) {
-                this.device.startAddress = 0x080001c4;
-                const blob = await this.device.do_upload(this.transferSize, 0x128);
-                data = this.__parsePlatformInfo(await blob.arrayBuffer(), true, false);
-                data["mode"] = "legacy";
-                return data;
-            }
+            data = {...data, ...data_kernel};
+        } else if (!data["magik"]) {
+            // If no magik is present, it means that there is no slot info, so it's a legacy firmware
+            this.device.startAddress = 0x080001c4;
+            const blob = await this.device.do_upload(this.transferSize, 0x128);
+            data = await this.__parsePlatformInfo(await blob.arrayBuffer());
+            data["mode"] = "legacy";
+            return data;
         }
         data["slot"] = slotInfo["slot"];
         return data;
@@ -566,6 +725,21 @@ class Numworks {
         await storage.parseStorage(storage_blob);
 
         return storage;
+    }
+
+    /**
+     * Crash the calculator by reading at a forbidden address
+     *
+     * @returns Boolean, True if the calculator crashed successfully
+     */
+    async crash() {
+        this.device.startAddress = 0xDEADBEEF;
+        try {
+            const blob = await this.device.do_upload(this.transferSize, 0x128);
+            return false;
+        } catch {
+            return true;
+        }
     }
 
     onUnexpectedDisconnect(event, callback) {
