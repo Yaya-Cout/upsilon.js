@@ -14,7 +14,7 @@ class Storage {
     }
 
     async __encodePyRecord(record) {
-        var content = new TextEncoder("utf-8").encode(record.code);
+        var content = new TextEncoder("utf-8").encode(record.code.normalize('NFKD'));
 
         record.data = new Blob([
             concatTypedArrays(
@@ -48,7 +48,9 @@ class Storage {
             var name = record.name + "." + record.type;
 
             var encoded_name = concatTypedArrays(
-                encoder.encode(name),
+                // We remove non-ASCII characters as they often cause calculator crashs
+                // Upsilon.js don't support reading non-ASCII filenames
+                encoder.encode(name.replace(/[^\x00-\x7F]/g, "")),
                 new Uint8Array([0])
             );
 
@@ -165,7 +167,9 @@ class Storage {
         var dv = new DataView(await record.data.arrayBuffer());
 
         record.autoImport = dv.getUint8(0) !== 0;
-        record.code = this.__readString(dv, 1, record.data.size - 1).content;
+
+        var codeDataview = new DataView(await record.data.slice(1, record.data.size - 1).arrayBuffer());
+        record.code = new TextDecoder("utf-8").decode(codeDataview);
 
         delete record.data;
 
