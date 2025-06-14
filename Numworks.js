@@ -376,7 +376,7 @@ class Numworks {
         }
         if (!magikFound) {
             data["magik"] = false;
-            console.warn("No usermand magic")
+            console.warn("No userland magic")
             return data
         }
 
@@ -516,7 +516,7 @@ class Numworks {
 
         const magik = 0xBADBEEEF;
         // Hack to handle corrupted slotInfo magik on old Upsilon Bootloader versions (pre 1.0.13)
-        data["slot"]["magik"] = (dv.getUint32(0x00, false) == magik) || (data["slot"]["magik"] = dv.getUint24(0x01, false) == 0xDBEEEF08);
+        data["slot"]["magik"] = (dv.getUint32(0x00, false) == magik) || ((dv.getUint32(0x00, false) & 0x00FFFFFF) == (magik & 0x00FFFFFF));
         // Check if the data is valid
         if (data["slot"]["magik"]) {
             // Check if the end magic is present
