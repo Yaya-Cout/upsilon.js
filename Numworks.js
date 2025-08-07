@@ -679,7 +679,12 @@ class Numworks {
      */
     async __retrieveStorage(address, size) {
         this.device.startAddress = address;
-        return await this.device.do_upload(this.transferSize, size + 8);
+
+        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
+        let data = await this.device.do_upload(this.transferSize, size + 8);
+        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
+
+        return data
     }
 
     /**
@@ -690,7 +695,10 @@ class Numworks {
      */
     async __flashStorage(address, data) {
         this.device.startAddress = address;
+
+        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
         await this.device.do_download(this.transferSize, data, false);
+        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
     }
 
     /**
