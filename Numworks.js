@@ -674,15 +674,21 @@ class Numworks {
      *
      * @param   address     Storage address
      * @param   size        Storage size.
+     * @param   version     Calculator version
      *
      * @return  The storage, as a Blob.
      */
-    async __retrieveStorage(address, size) {
-        this.device.startAddress = address;
+    async __retrieveStorage(address, size, version) {
+        if (version >= "24.2.0") {
+            await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
+        }
 
-        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
+        this.device.startAddress = address;
         let data = await this.device.do_upload(this.transferSize, size + 8);
-        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
+
+        if (version >= "24.2.0") {
+            await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
+        }
 
         return data
     }
@@ -692,13 +698,19 @@ class Numworks {
      *
      * @param   address     Storage address
      * @param   data        Storage data.
+     * @param   version     Calculator version
      */
-    async __flashStorage(address, data) {
-        this.device.startAddress = address;
+    async __flashStorage(address, data, version) {
+        if (version >= "24.2.0") {
+            await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
+        }
 
-        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 1);
+        this.device.startAddress = address;
         await this.device.do_download(this.transferSize, data, false);
-        await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
+
+        if (version >= "24.2.0") {
+            await this.device.device_.selectAlternateInterface(this.device.intfNumber, 0);
+        }
     }
 
     /**
@@ -713,7 +725,7 @@ class Numworks {
         let pinfo = await this.getPlatformInfo();
 
         let storage_blob = await storage.encodeStorage(pinfo["storage"]["size"]);
-        await this.__flashStorage(pinfo["storage"]["address"], await storage_blob.arrayBuffer());
+        await this.__flashStorage(pinfo["storage"]["address"], await storage_blob.arrayBuffer(), pinfo["version"]);
 
         callback();
     }
@@ -726,7 +738,7 @@ class Numworks {
     async backupStorage() {
         let pinfo = await this.getPlatformInfo();
 
-        let storage_blob = await this.__retrieveStorage(pinfo["storage"]["address"], pinfo["storage"]["size"]);
+        let storage_blob = await this.__retrieveStorage(pinfo["storage"]["address"], pinfo["storage"]["size"], pinfo["version"]);
 
         let storage = new Numworks.Storage();
 
